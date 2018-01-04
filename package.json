@@ -1,0 +1,12 @@
+{
+  "name": "smart-home-skill",
+  "version": "1.0.0",
+  "description": "Sample Smart Home Skill for Alexa",
+  "main": "index.js",
+  "author": "Michael Rotmanov <leachiM2k@leachiM2k.de>",
+  "license": "MIT",
+  "dependencies": {
+    "ajv": "^5.5.2",
+    "uuid": "^3.1.0"
+  }
+}
