@@ -26,4 +26,4 @@ jobs:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         AWS_DEFAULT_REGION: eu-west-1
-      run: zip -qq 433Remote-dist.zip *.js ./data ./node_modules && aws lambda update-function-code --function-name 433Remote --zip-file fileb://433Remote-dist.zip
+      run: zip -qq -r -X 433Remote-dist.zip *.js ./data ./node_modules && aws lambda update-function-code --function-name 433Remote --zip-file fileb://433Remote-dist.zip > /dev/null
