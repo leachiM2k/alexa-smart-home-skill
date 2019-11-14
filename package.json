@@ -6,7 +6,8 @@
   "author": "Michael Rotmanov <leachiM2k@leachiM2k.de>",
   "license": "MIT",
   "dependencies": {
-    "ajv": "^5.5.2",
-    "uuid": "^3.1.0"
+    "ajv": "^6.10.2",
+    "mqtt": "^3.0.0",
+    "uuid": "^3.3.3"
   }
 }

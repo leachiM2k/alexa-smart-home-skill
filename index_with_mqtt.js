@@ -1,10 +1,10 @@
 'use strict';
 const uuidv4 = require('uuid/v4');
-const http = require('http');
 const USER_DEVICES = require('./data/dummy_endpoints');
+const mqtt = require('mqtt');
 
-if(!process.env.device_host || !process.env.device_port || !process.env.device_token) {
-    console.error('Missing important environment variable. Needs: device_host, device_port, device_token');
+if(!process.env.mqtt_host || !process.env.mqtt_username || !process.env.mqtt_password || !process.env.mqtt_topic) {
+    console.error('Missing important environment variable. Needs: mqtt_host, mqtt_username, mqtt_password, mqtt_topic');
     process.exit(12);
 }
 
@@ -60,44 +60,18 @@ const isDeviceOnline = endpointId => {
 
 const callDeviceAPI = (id, action, callback) => {
     callback = callback || (() => {});
-    const options = {
-        hostname: process.env.device_host,
-        port: process.env.device_port,
-        //path: '/?id=' + id + '&action=' + action,
-        path: '/api/switch?id=' + id + '&action=' + action,
-        headers: {
-            'X-API-Token': process.env.device_token,
-        },
-        timeout: 1000
-    };
+    const client = mqtt.connect('mqtt://' + process.env.mqtt_host, {
+        username: process.env.mqtt_username,
+        password: process.env.mqtt_password
+    });
+    const TOPIC = process.env.mqtt_topic;
 
-    http.request(options, (res) => {
-        log('DEBUG', 'Call to device API ended with statusCode ' + res.statusCode);
-        let error;
-        if (res.statusCode !== 200) {
-            error = new Error('Request Failed.\n' +
-                `Status Code: ${res.statusCode}`);
-        }
-        if (error) {
-            callback(error);
-            // consume response data to free up memory
-            res.resume();
-            return;
-        }
-
-        res.setEncoding('utf8');
-        let rawData = '';
-        res.on('data', (chunk) => { rawData += chunk; });
-        res.on('end', () => {
-            try {
-                const parsedData = JSON.parse(rawData);
-                callback(null, parsedData);
-            } catch (e) {
-                callback(e.message);
-                console.error(e.message);
-            }
+    client.on('connect', function () {
+        client.publish(TOPIC, { id, action }, (err, res) => {
+            client.end();
+            callback(err, res);
         });
-    }).end();
+    });
 };
 
 const generateControlResponse = (endpointId, userAccessToken, state, correlationToken) => ({

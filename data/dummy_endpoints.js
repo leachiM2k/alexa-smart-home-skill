@@ -1,80 +1,34 @@
+const getCapabilities = () => [
+    {
+        'type': 'AlexaInterface',
+        'interface': 'Alexa',
+        'version': '3'
+    },
+    {
+        'type': 'AlexaInterface',
+        'interface': 'Alexa.PowerController',
+        'version': '3',
+        'properties': {
+            'supported': [
+                {
+                    'name': 'powerState'
+                }
+            ],
+        }
+    }
+];
+
+const buildEndpoint = (id, manufacturerName, friendlyName, description) => ({
+    'endpointId': id,
+    'manufacturerName': manufacturerName,
+    'friendlyName': friendlyName,
+    'description': description,
+    'displayCategories': ['LIGHT'],
+    'capabilities': getCapabilities()
+});
+
 module.exports = [
-      {
-          'endpointId': 'endpoint-001',
-          'manufacturerName': 'leachiM2k Raspberry',
-          'friendlyName': 'Sessel',
-          'description': '001',
-          'displayCategories': ['LIGHT'],
-          'capabilities': [
-              {
-                  'type': 'AlexaInterface',
-                  'interface': 'Alexa',
-                  'version': '3'
-              },
-              {
-                  'type': 'AlexaInterface',
-                  'interface': 'Alexa.PowerController',
-                  'version': '3',
-                  'properties': {
-                      'supported': [
-                          {
-                              'name': 'powerState'
-                          }
-                      ],
-                  }
-              }
-          ]
-      },
-      {
-          'endpointId': 'endpoint-002',
-          'manufacturerName': 'leachiM2k Raspberry',
-          'friendlyName': 'Esszimmer',
-          'description': '002',
-          'displayCategories': ['LIGHT'],
-          'capabilities': [
-              {
-                  'type': 'AlexaInterface',
-                  'interface': 'Alexa',
-                  'version': '3'
-              },
-              {
-                  'type': 'AlexaInterface',
-                  'interface': 'Alexa.PowerController',
-                  'version': '3',
-                  'properties': {
-                      'supported': [
-                          {
-                              'name': 'powerState'
-                          }
-                      ],
-                  }
-              }
-          ]
-      },
-      {
-          'endpointId': 'endpoint-003',
-          'manufacturerName': 'leachiM2k Raspberry',
-          'friendlyName': 'Wohnzimmer',
-          'description': '003',
-          'displayCategories': ['LIGHT'],
-          'capabilities': [
-              {
-                  'type': 'AlexaInterface',
-                  'interface': 'Alexa',
-                  'version': '3'
-              },
-              {
-                  'type': 'AlexaInterface',
-                  'interface': 'Alexa.PowerController',
-                  'version': '3',
-                  'properties': {
-                      'supported': [
-                          {
-                              'name': 'powerState'
-                          }
-                      ],
-                  }
-              }
-          ]
-      },
-]
+      buildEndpoint('0', 'leachiM2k Raspberry', 'Schrank', '000'),
+      buildEndpoint('1', 'leachiM2k Raspberry', 'Fenster', '001'),
+      buildEndpoint('2', 'leachiM2k Raspberry', 'Sessel', '002'),
+];
