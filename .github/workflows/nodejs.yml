@@ -22,22 +22,8 @@ jobs:
       env:
         CI: true
     - name: deploy
-      uses: "apex/actions/up@master"
-      with:
-        args: deploy production
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         AWS_REGION: eu-west-1
-#     - run: mkdir vendor vendor-zip && cp -r *.js ./data ./node_modules vendor/
-#     - uses: montudor/action-zip@v0.1.0
-#       with:
-#         args: zip -qq -r ./vendor-zip/433Remote-dist.zip ./vendor
-#     - name: deploy
-#       uses: appleboy/lambda-action@master
-#       with:
-#         args: --function-name 433Remote --zip-file ./vendor-zip/433Remote-dist.zip
-#       env:
-#         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-#         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-#         AWS_REGION: eu-west-1
+      run: zip -qq 433Remote-dist.zip *.js ./data ./node_modules && aws lambda update-function-code --function-name 433Remote --zip-file fileb://433Remote-dist.zip
