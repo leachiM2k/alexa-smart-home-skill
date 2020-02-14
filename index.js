@@ -1,10 +1,15 @@
 'use strict';
 const uuidv4 = require('uuid/v4');
 const http = require('http');
+const mqtt = require('mqtt');
 const USER_DEVICES = require('./data/dummy_endpoints');
 
-if(!process.env.device_host || !process.env.device_port || !process.env.device_token) {
+if (!process.env.device_host || !process.env.device_port || !process.env.device_token) {
     console.error('Missing important environment variable. Needs: device_host, device_port, device_token');
+    process.exit(12);
+}
+if (!process.env.mqtt_host || !process.env.mqtt_username || !process.env.mqtt_password || !process.env.mqtt_topic) {
+    console.error('Missing important environment variable. Needs: mqtt_host, mqtt_username, mqtt_password, mqtt_topic');
     process.exit(12);
 }
 
@@ -100,6 +105,22 @@ const callDeviceAPI = (id, action, callback) => {
     }).end();
 };
 
+const callDeviceAPIMqtt = (id, action, callback) => {
+    callback = callback || (() => {});
+    const client = mqtt.connect('mqtt://' + process.env.mqtt_host, {
+        username: process.env.mqtt_username,
+        password: process.env.mqtt_password
+    });
+    const TOPIC = process.env.mqtt_topic;
+
+    client.on('connect', () => {
+        client.publish(TOPIC, JSON.stringify({ id, action }), err => {
+            callback(err);
+            client.end();
+        });
+    });
+};
+
 const generateControlResponse = (endpointId, userAccessToken, state, correlationToken) => ({
     context: {
         properties: [
@@ -135,20 +156,22 @@ const turnOn = (endpointId, userAccessToken, correlationToken) => {
     log('DEBUG', `turnOn (endpointId: ${endpointId})`);
 
     // Call device cloud's API to turn on the device
-    callDeviceAPI(endpointId, 'on', (err, httpRes) => {
+    // callDeviceAPI(endpointId, 'on', (err, httpRes) => {
+    callDeviceAPIMqtt(endpointId, 'on', (err, httpRes) => {
         console.log('[DEBUG] Sent turnOn request to device', err, httpRes);
     });
     return generateControlResponse(endpointId, userAccessToken, 'on', correlationToken);
 };
 
 const turnOff = (endpointId, userAccessToken, correlationToken) => {
-  log('DEBUG', `turnOff (endpointId: ${endpointId})`);
+    log('DEBUG', `turnOff (endpointId: ${endpointId})`);
 
-  // Call device cloud's API to turn on the device
-  callDeviceAPI(endpointId, 'off', (err, httpRes) => {
-      console.log('[DEBUG] Sent turnOn request to device', err, httpRes);
-  });
-  return generateControlResponse(endpointId, userAccessToken, 'off', correlationToken);
+    // Call device cloud's API to turn on the device
+    // callDeviceAPI(endpointId, 'off', (err, httpRes) => {
+    callDeviceAPIMqtt(endpointId, 'off', (err, httpRes) => {
+        console.log('[DEBUG] Sent turnOff request to device', err, httpRes);
+    });
+    return generateControlResponse(endpointId, userAccessToken, 'off', correlationToken);
 };
 
 /**
@@ -188,17 +211,17 @@ const handleDiscovery = (request, callback) => {
      *  https://developer.amazon.com/public/solutions/alexa/alexa-skills-kit/docs/smart-home-skill-api-reference#discoverappliancesresponse
      */
     const response = {
-      event: {
-        header: {
-            namespace: 'Alexa.Discovery',
-            name: 'Discover.Response',
-            payloadVersion: '3',
-            messageId: generateMessageID(),
-        },
-        payload: {
-            endpoints: getDevicesFromPartnerCloud(userAccessToken),
-        },
-      }
+        event: {
+            header: {
+                namespace: 'Alexa.Discovery',
+                name: 'Discover.Response',
+                payloadVersion: '3',
+                messageId: generateMessageID(),
+            },
+            payload: {
+                endpoints: getDevicesFromPartnerCloud(userAccessToken),
+            },
+        }
     };
 
     /**
@@ -294,30 +317,30 @@ const handleControl = (request, callback) => {
 };
 
 const handleRequest = (request, callback) => {
-  switch (request.directive.header.namespace) {
-      case 'Alexa.Discovery':
-          handleDiscovery(request, callback);
-          break;
+    switch (request.directive.header.namespace) {
+        case 'Alexa.Discovery':
+            handleDiscovery(request, callback);
+            break;
 
-      case 'Alexa.PowerController':
-          handleControl(request, callback);
-          break;
+        case 'Alexa.PowerController':
+            handleControl(request, callback);
+            break;
 
-      /**
-       * Received an unexpected message
-       */
-      default: {
-          const errorMessage = `No supported namespace: ${request.directive.header.namespace}`;
-          log('ERROR', errorMessage);
-          callback(new Error(errorMessage));
-      }
-  }
+        /**
+         * Received an unexpected message
+         */
+        default: {
+            const errorMessage = `No supported namespace: ${request.directive.header.namespace}`;
+            log('ERROR', errorMessage);
+            callback(new Error(errorMessage));
+        }
+    }
 };
 
 exports.handler = (request, context, callback) => {
-  try {
-    handleRequest(request, callback);
-  } catch(e) {
-    callback(e);
-  }
+    try {
+        handleRequest(request, callback);
+    } catch (e) {
+        callback(e);
+    }
 };
