@@ -4,11 +4,13 @@ const http = require('http');
 const mqtt = require('mqtt');
 const USER_DEVICES = require('./data/dummy_endpoints');
 
-if (!process.env.device_host || !process.env.device_port || !process.env.device_token) {
+const COMMUNICATION_METHOD = 'mqtt';
+
+if (COMMUNICATION_METHOD === 'http' && (!process.env.device_host || !process.env.device_port || !process.env.device_token)) {
     console.error('Missing important environment variable. Needs: device_host, device_port, device_token');
     process.exit(12);
 }
-if (!process.env.mqtt_host || !process.env.mqtt_username || !process.env.mqtt_password || !process.env.mqtt_topic) {
+if (COMMUNICATION_METHOD === 'mqtt' && (!process.env.mqtt_host || !process.env.mqtt_username || !process.env.mqtt_password || !process.env.mqtt_topic)) {
     console.error('Missing important environment variable. Needs: mqtt_host, mqtt_username, mqtt_password, mqtt_topic');
     process.exit(12);
 }
@@ -63,8 +65,7 @@ const isDeviceOnline = endpointId => {
     return true;
 };
 
-const callDeviceAPI = (id, action, callback) => {
-    callback = callback || (() => {});
+const callDeviceAPI = (id, action) => {
     const options = {
         hostname: process.env.device_host,
         port: process.env.device_port,
@@ -76,47 +77,53 @@ const callDeviceAPI = (id, action, callback) => {
         timeout: 1000
     };
 
-    http.request(options, (res) => {
-        log('DEBUG', 'Call to device API ended with statusCode ' + res.statusCode);
-        let error;
-        if (res.statusCode !== 200) {
-            error = new Error('Request Failed.\n' +
-                `Status Code: ${res.statusCode}`);
-        }
-        if (error) {
-            callback(error);
-            // consume response data to free up memory
-            res.resume();
-            return;
-        }
-
-        res.setEncoding('utf8');
-        let rawData = '';
-        res.on('data', (chunk) => { rawData += chunk; });
-        res.on('end', () => {
-            try {
-                const parsedData = JSON.parse(rawData);
-                callback(null, parsedData);
-            } catch (e) {
-                callback(e.message);
-                console.error(e.message);
+    return new Promise((resolve, reject) => {
+        http.request(options, (res) => {
+            log('DEBUG', 'Call to device API ended with statusCode ' + res.statusCode);
+            let error;
+            if (res.statusCode !== 200) {
+                error = new Error('Request Failed.\n' +
+                    `Status Code: ${res.statusCode}`);
             }
-        });
-    }).end();
+            if (error) {
+                reject(error);
+                // consume response data to free up memory
+                res.resume();
+                return;
+            }
+
+            res.setEncoding('utf8');
+            let rawData = '';
+            res.on('data', (chunk) => { rawData += chunk; });
+            res.on('end', () => {
+                try {
+                    const parsedData = JSON.parse(rawData);
+                    resolve(parsedData);
+                } catch (e) {
+                    console.error(e.message);
+                    reject(e.message);
+                }
+            });
+        }).end();
+    });
 };
 
-const callDeviceAPIMqtt = (id, action, callback) => {
-    callback = callback || (() => {});
+const callDeviceAPIMqtt = (id, action) => {
     const client = mqtt.connect('mqtt://' + process.env.mqtt_host, {
         username: process.env.mqtt_username,
         password: process.env.mqtt_password
     });
     const TOPIC = process.env.mqtt_topic;
 
-    client.on('connect', () => {
-        client.publish(TOPIC, JSON.stringify({ id, action }), err => {
-            callback(err);
-            client.end();
+    return new Promise((resolve, reject) => {
+        client.on('connect', () => {
+            client.publish(TOPIC, JSON.stringify({ id, action }), err => {
+                if (err) {
+                    reject(err);
+                }
+                client.end();
+                resolve();
+            });
         });
     });
 };
@@ -152,26 +159,18 @@ const generateControlResponse = (endpointId, userAccessToken, state, correlation
     }
 });
 
-const turnOn = (endpointId, userAccessToken, correlationToken) => {
-    log('DEBUG', `turnOn (endpointId: ${endpointId})`);
+const changeState = async (endpointId, state, userAccessToken, correlationToken) => {
+    log('DEBUG', `turn-${state} (endpointId: ${endpointId})`);
 
     // Call device cloud's API to turn on the device
-    // callDeviceAPI(endpointId, 'on', (err, httpRes) => {
-    callDeviceAPIMqtt(endpointId, 'on', (err, httpRes) => {
-        console.log('[DEBUG] Sent turnOn request to device', err, httpRes);
-    });
-    return generateControlResponse(endpointId, userAccessToken, 'on', correlationToken);
-};
+    const methodMapping = {
+        'http': callDeviceAPI,
+        'mqtt': callDeviceAPIMqtt
+    };
+    const httpRes = await methodMapping[COMMUNICATION_METHOD](endpointId, state);
+    console.log(`[DEBUG] Sent turn-${state} request to device`, httpRes);
+    return generateControlResponse(endpointId, userAccessToken, state, correlationToken);
 
-const turnOff = (endpointId, userAccessToken, correlationToken) => {
-    log('DEBUG', `turnOff (endpointId: ${endpointId})`);
-
-    // Call device cloud's API to turn on the device
-    // callDeviceAPI(endpointId, 'off', (err, httpRes) => {
-    callDeviceAPIMqtt(endpointId, 'off', (err, httpRes) => {
-        console.log('[DEBUG] Sent turnOff request to device', err, httpRes);
-    });
-    return generateControlResponse(endpointId, userAccessToken, 'off', correlationToken);
 };
 
 /**
@@ -183,9 +182,8 @@ const turnOff = (endpointId, userAccessToken, correlationToken) => {
  * We are expected to respond back with a list of appliances that we have discovered for a given customer.
  *
  * @param {Object} request - The full request object from the Alexa smart home service.
- * @param {function} callback - The callback object on which to succeed or fail the response.
  */
-const handleDiscovery = (request, callback) => {
+const handleDiscovery = (request) => {
     log('DEBUG', `Discovery Request: ${JSON.stringify(request)}`);
 
     /**
@@ -200,7 +198,7 @@ const handleDiscovery = (request, callback) => {
     if (!userAccessToken || !isValidToken(userAccessToken)) {
         const errorMessage = `Discovery Request [${request.directive.header.messageId}] failed. Invalid access token: ${userAccessToken}`;
         log('ERROR', errorMessage);
-        callback(new Error(errorMessage));
+        throw new Error(errorMessage);
     }
 
     /**
@@ -232,7 +230,7 @@ const handleDiscovery = (request, callback) => {
     /**
      * Return result with successful message.
      */
-    callback(null, response);
+    return response;
 };
 
 /**
@@ -240,9 +238,8 @@ const handleDiscovery = (request, callback) => {
  * This is called when Alexa requests an action such as turning off an appliance.
  *
  * @param {Object} request - The full request object from the Alexa smart home service.
- * @param {function} callback - The callback object on which to succeed or fail the response.
  */
-const handleControl = (request, callback) => {
+const handleControl = async (request) => {
     log('DEBUG', `Control Request: ${JSON.stringify(request)}`);
 
     /**
@@ -259,8 +256,7 @@ const handleControl = (request, callback) => {
      */
     if (!userAccessToken || !isValidToken(userAccessToken)) {
         log('ERROR', `Discovery Request [${request.directive.header.messageId}] failed. Invalid access token: ${userAccessToken}`);
-        callback(null, generateErrorResponse('INVALID_AUTHORIZATION_CREDENTIAL'));
-        return;
+        return generateErrorResponse('INVALID_AUTHORIZATION_CREDENTIAL');
     }
 
     /**
@@ -274,8 +270,7 @@ const handleControl = (request, callback) => {
      */
     if (!endpointId) {
         log('ERROR', 'No endpointId provided in request');
-        callback(null, generateErrorResponse('INVALID_VALUE'));
-        return;
+        return generateErrorResponse('INVALID_VALUE');
     }
 
     /**
@@ -289,42 +284,39 @@ const handleControl = (request, callback) => {
      */
     if (!isDeviceOnline(endpointId, userAccessToken)) {
         log('ERROR', `Device offline: ${endpointId}`);
-        callback(null, generateErrorResponse('ENDPOINT_UNREACHABLE'));
-        return;
+        return generateErrorResponse('ENDPOINT_UNREACHABLE');
     }
 
     let response;
 
     switch (request.directive.header.name) {
         case 'TurnOn':
-            response = turnOn(endpointId, userAccessToken, request.directive.header.correlationToken);
+            response = await changeState(endpointId, 'on', userAccessToken, request.directive.header.correlationToken);
             break;
 
         case 'TurnOff':
-            response = turnOff(endpointId, userAccessToken, request.directive.header.correlationToken);
+            response = await changeState(endpointId, 'off', userAccessToken, request.directive.header.correlationToken);
             break;
 
         default: {
             log('ERROR', `No supported directive name: ${request.directive.header.name}`);
-            callback(null, generateErrorResponse('INVALID_DIRECTIVE'));
-            return;
+            return generateErrorResponse('INVALID_DIRECTIVE');
         }
     }
 
     log('DEBUG', `Control Confirmation: ${JSON.stringify(response)}`);
 
-    callback(null, response);
+    return response;
 };
 
-const handleRequest = (request, callback) => {
-    switch (request.directive.header.namespace) {
-        case 'Alexa.Discovery':
-            handleDiscovery(request, callback);
-            break;
+const handleRequest = request => {
+    let namespace = ((request.directive || {}).header || {}).namespace;
+    switch (namespace.toLowerCase()) {
+        case 'alexa.discovery':
+            return handleDiscovery(request);
 
-        case 'Alexa.PowerController':
-            handleControl(request, callback);
-            break;
+        case 'alexa.powercontroller':
+            return handleControl(request);
 
         /**
          * Received an unexpected message
@@ -332,15 +324,9 @@ const handleRequest = (request, callback) => {
         default: {
             const errorMessage = `No supported namespace: ${request.directive.header.namespace}`;
             log('ERROR', errorMessage);
-            callback(new Error(errorMessage));
+            throw new Error(errorMessage);
         }
     }
 };
 
-exports.handler = (request, context, callback) => {
-    try {
-        handleRequest(request, callback);
-    } catch (e) {
-        callback(e);
-    }
-};
+exports.handler = handleRequest;
