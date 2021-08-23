@@ -1,5 +1,5 @@
 'use strict';
-const uuidv4 = require('uuid/v4');
+const { v4: uuidv4 } = require('uuid');
 const http = require('http');
 const mqtt = require('mqtt');
 const USER_DEVICES = require('./data/dummy_endpoints');
@@ -69,7 +69,6 @@ const callDeviceAPI = (id, action) => {
     const options = {
         hostname: process.env.device_host,
         port: process.env.device_port,
-        //path: '/?id=' + id + '&action=' + action,
         path: '/api/switch?id=' + id + '&action=' + action,
         headers: {
             'X-API-Token': process.env.device_token,
