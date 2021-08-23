@@ -11,7 +11,7 @@ if (COMMUNICATION_METHOD === 'http' && (!process.env.device_host || !process.env
     process.exit(12);
 }
 if (COMMUNICATION_METHOD === 'mqtt' && (!process.env.mqtt_host || !process.env.mqtt_username || !process.env.mqtt_password || !process.env.mqtt_topic)) {
-    console.error('Missing important environment variable. Needs: mqtt_host, mqtt_username, mqtt_password, mqtt_topic');
+    console.error('Missing important environment variable. Needs: mqtt_host, mqtt_username, mqtt_password, mqtt_topic');
     process.exit(12);
 }
 
@@ -178,6 +178,50 @@ const changeState = async (endpointId, state, userAccessToken, correlationToken)
  */
 
 /**
+ * This function is invoked when we receive an 'Authorization' message from Alexa Smart Home Skill.
+ * So we can obtain and store credentials that identify a user to Alexa.
+ * If you handle an AcceptGrant directive successfully, respond with an AcceptGrant.Response event. Because this interface is synchronous only, the message doesn't contain a correlation token.
+ *
+ * @param {Object} request - The full request object from the Alexa smart home service.
+ */
+const handleAuthorization = (request) => {
+    log('DEBUG', `Authorization Request: ${JSON.stringify(request)}`);
+
+    /*
+    grant.code	An authorization code for the user.
+    grantee.token	The user access token received by Alexa during the account linking process.
+     */
+    const grantCode = request.directive.payload.grant.code.trim();
+    const granteeToken = request.directive.payload.grantee.token.trim();
+
+    /**
+     * For more information on a authorization response see
+     *  https://developer.amazon.com/en-US/docs/alexa/device-apis/alexa-authorization.html#acceptgrant-response-event
+     */
+    const response = {
+        event: {
+            header: {
+                namespace: "Alexa.Authorization",
+                name: "AcceptGrant.Response",
+                payloadVersion: '3',
+                messageId: generateMessageID(),
+            },
+            payload: {}
+        }
+    };
+
+    /**
+     * Log the response. These messages will be stored in CloudWatch.
+     */
+    log('DEBUG', `Authorization Response: ${JSON.stringify(response)}`);
+
+    /**
+     * Return result with successful message.
+     */
+    return response;
+};
+
+/**
  * This function is invoked when we receive a 'Discovery' message from Alexa Smart Home Skill.
  * We are expected to respond back with a list of appliances that we have discovered for a given customer.
  *
@@ -312,6 +356,9 @@ const handleControl = async (request) => {
 const handleRequest = request => {
     let namespace = ((request.directive || {}).header || {}).namespace;
     switch (namespace.toLowerCase()) {
+        case 'alexa.authorization':
+            return handleAuthorization(request);
+
         case 'alexa.discovery':
             return handleDiscovery(request);
 
